@@ -1,10 +1,14 @@
-from typing import Dict, Iterable, Tuple
+import logging
+from pathlib import Path
+from typing import Iterable
 
 import numpy as np
 import osmnx as ox
 import geopandas as gpd
 from shapely.geometry import LineString
 from shapely.ops import unary_union
+
+logger = logging.getLogger(__name__)
 
 def download_graph(place: str) -> ox.Graph:
     """Download OSM walk+bike graph for a city. Returns MultiDiGraph."""
@@ -44,6 +48,16 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         tags={"leisure": ["park", "garden", "recreation_ground"], "landuse": ["grass", "forest", "meadow"]},
     )
     buildings = ox.features_from_place(place, tags={"building": True})
+
+    logger.info(
+        "Fetched features: crossings=%s pois=%s attractiveness=%s trees=%s green=%s buildings=%s",
+        len(crossings),
+        len(pois),
+        len(attractiveness_pois),
+        len(trees),
+        len(green_areas),
+        len(buildings),
+    )
 
     crossings = crossings.to_crs(edges_gdf.crs) if not crossings.empty else crossings
     pois = pois.to_crs(edges_gdf.crs) if not pois.empty else pois
@@ -93,6 +107,36 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
     attractiveness_counts_raw = _count_within(edges_gdf["buffer_50m"], attractiveness_pois)
     tree_counts_raw = _count_within(edges_gdf["buffer_50m"], trees)
     green_counts_raw = _count_within(edges_gdf["buffer_50m"], green_areas)
+
+    total_edges = len(edges_gdf)
+    tag_presence = {
+        "highway": edges_gdf["highway"].notna().sum(),
+        "sidewalk": edges_gdf["sidewalk"].notna().sum(),
+        "sidewalk:width": edges_gdf["sidewalk:width"].notna().sum(),
+        "maxspeed": edges_gdf["maxspeed"].notna().sum(),
+        "surface": edges_gdf.get("surface", gpd.Series([], dtype=object)).notna().sum(),
+        "smoothness": edges_gdf.get("smoothness", gpd.Series([], dtype=object)).notna().sum(),
+    }
+    logger.info("Edge tag coverage out of %s: %s", total_edges, tag_presence)
+
+    def _count_positive(values: Iterable[int]) -> int:
+        return int(np.count_nonzero(np.asarray(values)))
+
+    logger.info(
+        "Raw buffer counts (edges with >=1): crossings=%s pois=%s attractiveness=%s trees=%s green=%s",
+        _count_positive(crossing_counts),
+        _count_positive(poi_counts_raw),
+        _count_positive(attractiveness_counts_raw),
+        _count_positive(tree_counts_raw),
+        _count_positive(green_counts_raw),
+    )
+
+    visible_positive = {
+        "poi": 0,
+        "attractiveness": 0,
+        "tree": 0,
+        "green": 0,
+    }
 
     for (u, v, k), row in edges_gdf.iterrows():
         highway = row.get("highway")
@@ -168,6 +212,15 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             tree_visible = tree_raw
             green_visible = green_raw
 
+        if poi_visible > 0:
+            visible_positive["poi"] += 1
+        if attractiveness_visible > 0:
+            visible_positive["attractiveness"] += 1
+        if tree_visible > 0:
+            visible_positive["tree"] += 1
+        if green_visible > 0:
+            visible_positive["green"] += 1
+
         G.edges[u, v, k]["sidewalk_score"] = sidewalk_score
         G.edges[u, v, k]["width_score"] = width_score
         G.edges[u, v, k]["maxspeed_score"] = maxspeed_score
@@ -183,6 +236,14 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         G.edges[u, v, k]["attractiveness_score_raw"] = attractiveness_raw
         G.edges[u, v, k]["tree_score_raw"] = tree_raw
         G.edges[u, v, k]["green_score_raw"] = green_raw
+
+    logger.info(
+        "Visible counts (edges with >=1): poi=%s attractiveness=%s tree=%s green=%s",
+        visible_positive["poi"],
+        visible_positive["attractiveness"],
+        visible_positive["tree"],
+        visible_positive["green"],
+    )
 
 def attach_slope(G, srtm_path: str) -> None:
     """
@@ -250,6 +311,12 @@ def save_graph(G, path: str) -> None:
     ox.save_graphml(G, filepath=path)
 
 if __name__ == "__main__":
+    log_path = Path("build_graph.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(message)s",
+        handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
+    )
     G = download_graph("Turin, Italy")
     attach_osm_indicators(G, "Turin, Italy")
     #attach_slope(G, "data/srtm/N44E007.hgt")
