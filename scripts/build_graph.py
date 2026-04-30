@@ -318,6 +318,7 @@ def save_graph(G, path: str) -> None:
     ox.save_graphml(G, filepath=path)
 
 if __name__ == "__main__":
+    ## logging
     log_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
     date_format = "%H:%M:%S"
 
@@ -341,17 +342,24 @@ if __name__ == "__main__":
 
     progress_logger.setLevel(logging.INFO)
     progress_logger.addHandler(progress_handler)
+    
+    ##
+    
     start = time.perf_counter()
     logger.info("Starting graph build")
     logger.info("Step 1/4: download graph")
     G = download_graph("Turin, Italy")
+    
     logger.info("Step 2/4: attach OSM indicators")
     attach_osm_indicators(G, "Turin, Italy")
+    
     #attach_slope(G, "data/srtm/N44E007.hgt")
     #attach_air_quality(G, "data/eea/pm25.tif")
     #attach_thermal_comfort(G)
+    
     logger.info("Step 3/4: normalize indicators")
     normalize_indicators(G)
+    
     logger.info("Step 4/4: save graph")
     output_path = Path("backend/city_graph.graphml")
     save_graph(G, str(output_path))
