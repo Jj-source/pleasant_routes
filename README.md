@@ -261,22 +261,6 @@ BONUS:
 
 ---
 
-## Effort estimate
-
-|Component|LOC|
-|---|---|
-|build_graph. Py|~80|
-|db. Py|~50|
-|graph. Py|~80|
-|app. Py|~80|
-|map. Js|~80|
-|ui. Js|~120|
-|style. Css|~60|
-|manifest + SW|~50|
-|**Total**|**~600**|
-
----
-
 ## References
 
 - Novack et al. (2018) — OSM pleasant routing, factor extraction methodology
