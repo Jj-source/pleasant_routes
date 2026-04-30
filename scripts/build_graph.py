@@ -180,6 +180,8 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             percent = (idx / total_edges) * 100
             progress_logger.info("Edge processing: %s/%s (%.0f%%)", idx, total_edges, percent)
         highway = row.get("highway")
+        if isinstance(highway, (list, tuple)):
+            highway = highway[0]
         sidewalk = row.get("sidewalk")
         sidewalk_width = row.get("sidewalk:width")
         width = row.get("width")
@@ -218,9 +220,6 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             speed_val = 50.0
         maxspeed_score = max(0.0, 1.0 - (speed_val / 80.0))
 
-        # Normalize highway tag to single value.
-        if isinstance(highway, (list, tuple)):
-            highway = highway[0]
         pedestrian_score = 1.0 if str(highway) == "pedestrian" else 0.0
 
         # Low traffic: simple heuristic from highway class + speed.
