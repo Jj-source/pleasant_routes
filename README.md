@@ -53,7 +53,9 @@ pleasant-routes/
 ```sql
 profiles(
   profile_id  TEXT PRIMARY KEY,  -- UUID generated client-side
-  persona     TEXT,              -- cyclist|walker|parent|older|custom
+  mode     TEXT,              -- cyclist|walker,
+  age INTEGER,
+  occupation TEXT,              -- student|worker|pensionato
   priorities  TEXT,              -- JSON array, top 3
   created_at  DATETIME
 )
@@ -73,6 +75,8 @@ ratings(
   ts          DATETIME
 )
 ```
+
+TODO: refine the profile data to be the 20% that describes 80% of the person
 
 ---
 
