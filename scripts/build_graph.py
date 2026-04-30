@@ -35,20 +35,52 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
 
     # Build feature layers for crossings, POIs, trees, green areas, and buildings.
     crossings = ox.features_from_place(place, tags={"highway": "crossing"})
-    pois = ox.features_from_place(place, tags={"amenity": True, "shop": True, "tourism": True})
+    # Sociability POIs (Novack Table 1).
+    pois = ox.features_from_place(
+        place,
+        tags={
+            "amenity": ["cafe", "bar", "pub", "restaurant"],
+            "shop": [
+                "bakery",
+                "convenience",
+                "supermarket",
+                "mall",
+                "department_store",
+                "clothes",
+                "fashion",
+                "shoes",
+            ],
+            "leisure": ["fitness_centre"],
+        },
+    )
     attractiveness_pois = ox.features_from_place(
         place,
         tags={
             "tourism": ["attraction", "museum", "artwork"],
             "historic": True,
             "amenity": ["arts_centre", "theatre", "cinema"],
-            "leisure": ["playground", "stadium"],
         },
     )
     trees = ox.features_from_place(place, tags={"natural": "tree"})
     green_areas = ox.features_from_place(
         place,
-        tags={"leisure": ["park", "garden", "recreation_ground"], "landuse": ["grass", "forest", "meadow"]},
+        tags={
+            "leisure": ["park", "garden", "recreation_ground", "nature_reserve", "pitch"],
+            "landuse": [
+                "grass",
+                "forest",
+                "meadow",
+                "greenfield",
+                "allotments",
+                "cemetery",
+                "orchard",
+                "village_green",
+                "vineyard",
+            ],
+            "natural": ["wood", "scrub", "grassland", "wetland", "heath"],
+            "amenity": ["grave_yard"],
+            "tourism": ["camp_site"],
+        },
     )
     buildings = ox.features_from_place(place, tags={"building": True})
 
@@ -79,10 +111,10 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
 
     def _count_within(buffered: gpd.GeoSeries, features: gpd.GeoDataFrame) -> Iterable[int]:
         if features.empty:
-            return [0] * len(buffered)
-        buffered_gdf = gpd.GeoDataFrame(geometry=buffered, crs=edges_gdf.crs)
+            return gpd.Series(0, index=buffered.index)
+        buffered_gdf = gpd.GeoDataFrame(geometry=buffered, crs=edges_gdf.crs, index=buffered.index)
         joined = gpd.sjoin(buffered_gdf, features, how="left", predicate="intersects")
-        return joined.groupby(joined.index).size().reindex(range(len(buffered)), fill_value=0)
+        return joined.groupby(joined.index).size().reindex(buffered.index, fill_value=0)
 
     def _visible_count(buffer_geom, origin_point, features: gpd.GeoDataFrame) -> int:
         if features.empty:
@@ -163,7 +195,10 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
                 width_val = float(sidewalk_width) if sidewalk_width else 0.0
         except (TypeError, ValueError):
             width_val = 0.0
-        if width_val < 1.5:
+            
+        if width_val == 0.0:
+            width_score = 0.5
+        elif width_val < 1.5:
             width_score = 0.0
         elif width_val < 2:
             width_score = 0.2
@@ -183,21 +218,9 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             speed_val = 50.0
         maxspeed_score = max(0.0, 1.0 - (speed_val / 80.0))
 
-        # Highway types: prefer footway/cycleway/pedestrian, penalize trunk/primary.
+        # Normalize highway tag to single value.
         if isinstance(highway, (list, tuple)):
             highway = highway[0]
-        highway_score_map = {
-            "footway": 1.0,
-            "cycleway": 1.0,
-            "pedestrian": 0.8,
-            "residential": 0.4,
-            "tertiary": 0.2,
-            "secondary": 0.0,
-            "primary": -0.4,
-            "trunk": -0.6,
-        }
-        highway_score = highway_score_map.get(str(highway), 0.0)
-
         pedestrian_score = 1.0 if str(highway) == "pedestrian" else 0.0
 
         # Low traffic: simple heuristic from highway class + speed.
@@ -248,7 +271,6 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         G.edges[u, v, k]["sidewalk_score"] = sidewalk_score
         G.edges[u, v, k]["width_score"] = width_score
         G.edges[u, v, k]["maxspeed_score"] = maxspeed_score
-        G.edges[u, v, k]["highway_score"] = highway_score
         G.edges[u, v, k]["pedestrian_score"] = pedestrian_score
         G.edges[u, v, k]["low_traffic_score"] = low_traffic_score
         G.edges[u, v, k]["crossing_score"] = crossing_score
@@ -292,12 +314,17 @@ def attach_thermal_comfort(G) -> None:
     POSTPONED FOR NOW
     """
 
-def normalize_indicators(G, skip_keys: Iterable[str] | None = None) -> None:
+def normalize_indicators(
+    G,
+    bounded_01_keys: Iterable[str] | None = None,
+    skip_keys: Iterable[str] | None = None,
+) -> None:
     """
     Apply percentile-based min-max normalization to all indicator attributes.
     Scales each to [-1, 1] with median = 0. Modifies G in place.
     """
     skip = set(skip_keys or [])
+    bounded_01 = set(bounded_01_keys or [])
     indicator_keys = set()
     for _, _, _, data in G.edges(keys=True, data=True):
         for key in data.keys():
@@ -305,6 +332,19 @@ def normalize_indicators(G, skip_keys: Iterable[str] | None = None) -> None:
                 indicator_keys.add(key)
 
     indicator_keys -= skip
+
+    # Normalize known bounded indicators to [-1, 1].
+    for key in bounded_01:
+        if key not in indicator_keys:
+            continue
+        for _, _, _, data in G.edges(keys=True, data=True):
+            val = data.get(key)
+            if val is None:
+                continue
+            val = float(np.clip(val, 0.0, 1.0))
+            data[key] = (2.0 * val) - 1.0
+
+    indicator_keys -= bounded_01
 
     for key in indicator_keys:
         values = []
@@ -378,15 +418,15 @@ if __name__ == "__main__":
     #attach_thermal_comfort(G)
     
     logger.info("Step 3/4: normalize indicators")
-    skip_normalization = {
+    bounded_01 = {
         "sidewalk_score",
         "width_score",
         "maxspeed_score",
-        "highway_score",
         "pedestrian_score",
         "low_traffic_score",
     }
-    normalize_indicators(G, skip_keys=skip_normalization)
+    skip_normalization = {}
+    normalize_indicators(G, bounded_01_keys=bounded_01, skip_keys=skip_normalization)
     
     logger.info("Step 4/4: save graph")
     output_path = Path("backend/city_graph.graphml")
