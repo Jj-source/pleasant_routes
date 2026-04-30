@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
+import networkx as nx
 import osmnx as ox
 import geopandas as gpd
 from shapely.geometry import LineString
@@ -13,7 +14,7 @@ logger = logging.getLogger("build_graph")
 feature_logger = logging.getLogger("build_graph.features")
 progress_logger = logging.getLogger("build_graph.progress")
 
-def download_graph(place: str) -> ox.Graph:
+def download_graph(place: str) -> nx.MultiDiGraph:
     """Download OSM walk+bike graph for a city. Returns MultiDiGraph."""
     G = ox.graph_from_place(place, network_type="all", simplify=True)
     G = ox.add_edge_lengths(G)
