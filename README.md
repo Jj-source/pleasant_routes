@@ -143,35 +143,33 @@ Iterative search for routes ~5-10%, 10-25%, 25-50% longer than shortest. Show 2-
 
 ## Automatic Indicators (precomputed at build time)
 
-| Indicator            | Source                          | Method                   |
-| -------------------- | ------------------------------- | ------------------------ |
-| Sidewalk             | `sidewalk` OSM tag              | direct                   |
-| Path width           | `width` and `sidewalk:width`    | Direct                   |
-| ~~Pavement quality~~ | `surface`, `smoothness`         | direct                   |
-| Slope                | SRTM DEM (free, 30m)            | one-time download + join |
-| Crossings            | `highway=crossing` nodes        | count in buffer          |
-| ~~Lighting~~         | `lit` tag                       | direct                   |
-| Parks / green areas  | `leisure`, `landuse` polygons   | buffer intersection      |
-| Trees                | `natural=tree` nodes            | density in buffer        |
-| Low traffic          | `highway` type + `maxspeed`     | lookup table             |
-| Pedestrian zones     | `highway=pedestrian`            | direct                   |
-| Attractiveness       | POI density (cafes, shops, art) | 50m buffer count         |
+| Indicator            | Source                                | Method                              |
+| -------------------- | ------------------------------------- | ----------------------------------- |
+| Sidewalk             | `sidewalk` OSM tag                    | direct                              |
+| Path width           | `sidewalk:width` (or `width`)         | discretized bins                    |
+| Maxspeed             | `maxspeed` OSM tag                    | inverse speed heuristic             |
+| Low traffic          | `highway` type + `maxspeed`           | lookup table + speed adjustment     |
+| Pedestrian zones     | `highway=pedestrian`                  | direct                              |
+| Crossings            | `highway=crossing`                    | 50m buffer count                    |
+| POIs (sociability)   | amenities + shops + fitness           | 50m buffer count or visibility      |
+| Attractiveness POIs  | tourism + historic + arts             | 50m buffer count or visibility      |
+| Trees                | local tree dataset (`data/alberate`)  | 50m buffer count or visibility      |
+| Parks / green areas  | `leisure` + `landuse` + `natural`     | 50m buffer count or visibility      |
 
-All normalized to [-1, 1], percentile-based scaling, median = 0.
+All normalized to [-1, 1] with percentile scaling (p5/p95) and median = 0.
 
 ### Current indicator logic (build_graph.py)
 
-- Sidewalk: `sidewalk` tag in {both, yes, left, right} -> 1.0, else 0.0
-- Path width: `sidewalk:width` numeric meters, scaled.
-- Maxspeed: lower is better: $1 - \frac{speed}{80}$, floored at 0
-- Highway class: mapping (footway/cycleway/pedestrian positive; trunk/primary negative)
-- Pedestrian zones: `highway=pedestrian` -> 1.0 else 0.0
-- Low traffic: heuristic by `highway` class + maxspeed adjustment
-- Crossings: count of `highway=crossing` features within 50m buffer
-- POIs: count of amenities/shops/tourism features within 50m buffer
-- Attractiveness: count of tourism/historic/arts/leisure POIs within 50m buffer
-- Trees: count of `natural=tree` nodes within 50m buffer
-- Green areas: count of park/garden/grass/forest/meadow polygons within 50m buffer
+- Sidewalk: `sidewalk` in {both, yes, left, right} -> 1.0, else 0.0.
+- Path width: if `highway` is pedestrian/footway/living_street, uses `width` (meters) and forces sidewalk_score = 1.0; otherwise uses `sidewalk:width`. Width bins: 0m -> 0.5, <1.5 -> 0.0, <2.0 -> 0.2, <2.5 -> 0.4, <3.0 -> 0.6, <4.0 -> 0.8, else 1.0.
+- Maxspeed: lower is better: $1 - \frac{speed}{50}$, floored at 0 (defaults to 50 if missing).
+- Pedestrian zones: `highway=pedestrian` -> 1.0 else 0.0.
+- Low traffic: `highway` class mapping (footway/path/cycleway/pedestrian/living_street=1.0; residential/service=0.6; tertiary=0.3; secondary/primary/trunk=0.0) plus +0.2 if speed <=30, -0.2 if speed >=70.
+- Crossings: count of `highway=crossing` features within 50m buffer.
+- POIs: count of amenities/shops/fitness within 50m buffer.
+- Attractiveness: count of tourism/historic/arts POIs within 50m buffer.
+- Trees: count of tree points within 50m buffer.
+- Green areas: count of parks/gardens/green landuse within 50m buffer.
 
 Visibility option: for POIs, attractiveness, trees, and green areas, the script can use a visibility filter (line-of-sight to feature centroid that does not intersect a building polygon). Raw buffer counts are also stored with the `_score_raw` suffix.
 
