@@ -100,6 +100,7 @@ TODO: refine the profile data to be the 20% that describes 80% of the person
 - make annotating faster: street segments are too small, find easy way to rate longer segments
 - make annotating faster: reduce necessary clicks
 - presets of weights for the option based on walk or bike route: details on the sidewalk score will be weighted by 0 if i am routing for a bike
+- do PCA to check redundancy of indicators
 
 ## Routing
 
