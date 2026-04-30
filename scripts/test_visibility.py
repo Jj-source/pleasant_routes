@@ -351,13 +351,26 @@ if __name__ == "__main__":
         (45.077809, 7.639926), #tesoriera lato con muro
         (45.077940, 7.649357), # vicino astra parchetto e viale
         (45.075741, 7.655840), # bernini
-        (45.057460, 7.688670) # vale
+        (45.057460, 7.688670), # vale,
+        (45.068721, 7.656339),
+        (45.068560, 7.656272),
+        (45.068192, 7.656476),
+        (45.069376, 7.655502)
+    ]
+    
+    c2 = [
+        (45.069505, 7.655558),
+        (45.069376, 7.655502),
+        (45.069255, 7.655631)
     ]
     radius_m = 50.0
     trees_path = "data/alberate_geo.zip"
 
     #export_features(coords[0][0], coords[0][1], radius_m, trees_path, "exports")
-    export_debug_map(coords[3][0], coords[3][1], radius_m, trees_path, "exports")
+    #export_debug_map(coords[7][0], coords[7][1], radius_m, trees_path, "exports")
+    
+    for lat, lon in c2:
+        export_debug_map(lat, lon, radius_m, trees_path, "exports")
     
     #for lat, lon in coords:
     #    run(lat, lon, radius_m, trees_path)
