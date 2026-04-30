@@ -7,8 +7,8 @@ def download_graph(place: str) -> ox.Graph:
 def attach_osm_indicators(G) -> None:
     """
     For each edge, attach OSM-derived indicator scores as attributes.
-    Reads: highway, surface, smoothness, sidewalk, sidewalk:width,
-           lit, maxspeed, crossing count in buffer, POI density.
+    Reads: highway, sidewalk, sidewalk:width,
+           maxspeed, crossing count in buffer, POI density.
     Modifies G in place.
     """
 
@@ -16,6 +16,7 @@ def attach_slope(G, srtm_path: str) -> None:
     """
     Load SRTM .hgt raster, compute elevation diff between edge nodes.
     Attach slope (%) as edge attribute. Modifies G in place.
+    POSTPONED FOR NOW
     """
 
 def attach_air_quality(G, eea_raster_path: str) -> None:
@@ -23,6 +24,7 @@ def attach_air_quality(G, eea_raster_path: str) -> None:
     Spatially join EEA PM2.5 annual mean raster to edges by midpoint.
     Attach pm25_score (normalized -1 to 1) as edge attribute.
     Modifies G in place.
+    POSTPONED FOR NOW
     """
 
 def attach_thermal_comfort(G) -> None:
@@ -30,6 +32,7 @@ def attach_thermal_comfort(G) -> None:
     Proxy thermal comfort from tree node density + building height/width ratio
     within 50m buffer per edge. Attach thermal_score as edge attribute.
     Modifies G in place. Optionally joins r.sun shadow raster if available.
+    POSTPONED FOR NOW
     """
 
 def normalize_indicators(G) -> None:
