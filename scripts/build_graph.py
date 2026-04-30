@@ -17,7 +17,7 @@ progress_logger = logging.getLogger("build_graph.progress")
 def download_graph(place: str) -> nx.MultiDiGraph:
     """Download OSM walk+bike graph for a city. Returns MultiDiGraph."""
     G = ox.graph_from_place(place, network_type="all", simplify=True)
-    G = ox.add_edge_lengths(G)
+    G = ox.distance.add_edge_lengths(G)
     return G
 
 def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
