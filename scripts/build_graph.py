@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -8,7 +9,9 @@ import geopandas as gpd
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("build_graph")
+feature_logger = logging.getLogger("build_graph.features")
+progress_logger = logging.getLogger("build_graph.progress")
 
 def download_graph(place: str) -> ox.Graph:
     """Download OSM walk+bike graph for a city. Returns MultiDiGraph."""
@@ -49,7 +52,7 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
     )
     buildings = ox.features_from_place(place, tags={"building": True})
 
-    logger.info(
+    feature_logger.info(
         "Fetched features: crossings=%s pois=%s attractiveness=%s trees=%s green=%s buildings=%s",
         len(crossings),
         len(pois),
@@ -117,12 +120,12 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         "surface": edges_gdf.get("surface", gpd.Series([], dtype=object)).notna().sum(),
         "smoothness": edges_gdf.get("smoothness", gpd.Series([], dtype=object)).notna().sum(),
     }
-    logger.info("Edge tag coverage out of %s: %s", total_edges, tag_presence)
+    feature_logger.info("Edge tag coverage out of %s: %s", total_edges, tag_presence)
 
     def _count_positive(values: Iterable[int]) -> int:
         return int(np.count_nonzero(np.asarray(values)))
 
-    logger.info(
+    feature_logger.info(
         "Raw buffer counts (edges with >=1): crossings=%s pois=%s attractiveness=%s trees=%s green=%s",
         _count_positive(crossing_counts),
         _count_positive(poi_counts_raw),
@@ -138,7 +141,11 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         "green": 0,
     }
 
-    for (u, v, k), row in edges_gdf.iterrows():
+    progress_step = max(1, total_edges // 20)
+    for idx, ((u, v, k), row) in enumerate(edges_gdf.iterrows(), start=1):
+        if idx == 1 or idx % progress_step == 0 or idx == total_edges:
+            percent = (idx / total_edges) * 100
+            progress_logger.info("Edge processing: %s/%s (%.0f%%)", idx, total_edges, percent)
         highway = row.get("highway")
         sidewalk = row.get("sidewalk")
         sidewalk_width = row.get("sidewalk:width")
@@ -237,7 +244,7 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         G.edges[u, v, k]["tree_score_raw"] = tree_raw
         G.edges[u, v, k]["green_score_raw"] = green_raw
 
-    logger.info(
+    feature_logger.info(
         "Visible counts (edges with >=1): poi=%s attractiveness=%s tree=%s green=%s",
         visible_positive["poi"],
         visible_positive["attractiveness"],
@@ -311,16 +318,45 @@ def save_graph(G, path: str) -> None:
     ox.save_graphml(G, filepath=path)
 
 if __name__ == "__main__":
-    log_path = Path("build_graph.log")
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s %(message)s",
-        handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
-    )
+    log_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
+    date_format = "%H:%M:%S"
+
+    info_handler = logging.FileHandler(Path("build_graph_info.log"))
+    info_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+    info_handler.setLevel(logging.INFO)
+
+    feature_handler = logging.FileHandler(Path("build_graph_features.log"))
+    feature_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+    feature_handler.setLevel(logging.INFO)
+
+    progress_handler = logging.StreamHandler()
+    progress_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+    progress_handler.setLevel(logging.INFO)
+
+    logger.setLevel(logging.INFO)
+    logger.addHandler(info_handler)
+
+    feature_logger.setLevel(logging.INFO)
+    feature_logger.addHandler(feature_handler)
+
+    progress_logger.setLevel(logging.INFO)
+    progress_logger.addHandler(progress_handler)
+    start = time.perf_counter()
+    logger.info("Starting graph build")
+    logger.info("Step 1/4: download graph")
     G = download_graph("Turin, Italy")
+    logger.info("Step 2/4: attach OSM indicators")
     attach_osm_indicators(G, "Turin, Italy")
     #attach_slope(G, "data/srtm/N44E007.hgt")
     #attach_air_quality(G, "data/eea/pm25.tif")
     #attach_thermal_comfort(G)
+    logger.info("Step 3/4: normalize indicators")
     normalize_indicators(G)
-    save_graph(G, "backend/city_graph.graphml")
+    logger.info("Step 4/4: save graph")
+    output_path = Path("backend/city_graph.graphml")
+    save_graph(G, str(output_path))
+    if output_path.exists():
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        logger.info("Saved graph: %s (%.1f MB)", output_path, size_mb)
+    elapsed = time.perf_counter() - start
+    logger.info("Completed in %.1f seconds", elapsed)
