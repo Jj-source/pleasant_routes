@@ -218,7 +218,7 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             speed_val = float(str(maxspeed).split()[0]) if maxspeed else 50.0
         except (TypeError, ValueError):
             speed_val = 50.0
-        maxspeed_score = max(0.0, 1.0 - (speed_val / 80.0))
+        maxspeed_score = max(0.0, 1.0 - (speed_val / 50.0))
 
         pedestrian_score = 1.0 if str(highway) == "pedestrian" else 0.0
 
