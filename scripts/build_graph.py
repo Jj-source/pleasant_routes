@@ -16,6 +16,10 @@ progress_logger = logging.getLogger("build_graph.progress")
 
 def download_graph(place: str) -> nx.MultiDiGraph:
     """Download OSM walk+bike graph for a city. Returns MultiDiGraph."""
+    if hasattr(ox, "settings") and hasattr(ox.settings, "useful_tags_way"):
+        useful_tags = set(ox.settings.useful_tags_way)
+        useful_tags.update({"sidewalk", "sidewalk:width", "width"})
+        ox.settings.useful_tags_way = list(useful_tags)
     G = ox.graph_from_place(place, network_type="all", simplify=True)
     G = ox.distance.add_edge_lengths(G)
     return G
@@ -62,7 +66,8 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             "amenity": ["arts_centre", "theatre", "cinema"],
         },
     )
-    trees = ox.features_from_place(place, tags={"natural": "tree"})
+    trees = gpd.read_file("data/alberate_geo.zip")
+    trees = trees.to_crs(epsg=3857)
     green_areas = ox.features_from_place(
         place,
         tags={
@@ -124,10 +129,10 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
             return int(features[features.intersects(buffer_geom)].shape[0])
 
         sindex = features.sindex
-        candidate_idx = list(sindex.intersection(buffer_geom.bounds)) if sindex else list(features.index)
+        candidate_idx = list(sindex.intersection(buffer_geom.bounds)) if sindex else list(range(len(features)))
         if not candidate_idx:
             return 0
-        candidates = features.loc[candidate_idx]
+        candidates = features.iloc[candidate_idx]
         visible_count = 0
         for geom in candidates.geometry:
             if not geom.intersects(buffer_geom):
@@ -145,14 +150,25 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
     green_counts_raw = _count_within(edges_gdf["buffer_50m"], green_areas)
 
     total_edges = len(edges_gdf)
+    
+    use_sidewalk_scores = "sidewalk" in edges_gdf.columns and "sidewalk:width" in edges_gdf.columns
+    if not use_sidewalk_scores:
+        feature_logger.warning(
+            "Missing sidewalk tags; disabling sidewalk_score and width_score"
+        )
+    use_width_tag = "width" in edges_gdf.columns
+    def _tag_count(tag_name: str) -> int:
+        series = edges_gdf.get(tag_name)
+        if series is None:
+            return 0
+        return int(series.notna().sum())
+
     tag_presence = {
-        "highway": edges_gdf["highway"].notna().sum(),
-        "sidewalk": edges_gdf["sidewalk"].notna().sum(),
-        "sidewalk:width": edges_gdf["sidewalk:width"].notna().sum(),
-        "maxspeed": edges_gdf["maxspeed"].notna().sum(),
-        "width": edges_gdf.get("width", gpd.Series([], dtype=object)).notna().sum(),
-        "surface": edges_gdf.get("surface", gpd.Series([], dtype=object)).notna().sum(),
-        "smoothness": edges_gdf.get("smoothness", gpd.Series([], dtype=object)).notna().sum(),
+        "highway": _tag_count("highway"),
+        "sidewalk": _tag_count("sidewalk"),
+        "sidewalk:width": _tag_count("sidewalk:width"),
+        "maxspeed": _tag_count("maxspeed"),
+        "width": _tag_count("width"),
     }
     feature_logger.info("Edge tag coverage out of %s: %s", total_edges, tag_presence)
 
@@ -183,36 +199,40 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         highway = row.get("highway")
         if isinstance(highway, (list, tuple)):
             highway = highway[0]
-        sidewalk = row.get("sidewalk")
-        sidewalk_width = row.get("sidewalk:width")
-        width = row.get("width")
+        sidewalk = row.get("sidewalk") if use_sidewalk_scores else None
+        sidewalk_width = row.get("sidewalk:width") if use_sidewalk_scores else None
+        width = row.get("width") if use_width_tag else None
         maxspeed = row.get("maxspeed")
 
         # Basic heuristic scores in raw units before normalization.
-        sidewalk_score = 1.0 if sidewalk in {"both", "yes", "left", "right"} else 0.0
-        try:
-            if str(highway) in {"pedestrian", "footway", "living_street"}:
-                width_val = float(width) if width else 0.0
-                sidewalk_score = 1.0
+        if use_sidewalk_scores:
+            sidewalk_score = 1.0 if sidewalk in {"both", "yes", "left", "right"} else 0.0
+            try:
+                if str(highway) in {"pedestrian", "footway", "living_street"}:
+                    width_val = float(width) if width else 0.0
+                    sidewalk_score = 1.0
+                else:
+                    width_val = float(sidewalk_width) if sidewalk_width else 0.0
+            except (TypeError, ValueError):
+                width_val = 0.0
+
+            if width_val == 0.0:
+                width_score = 0.5
+            elif width_val < 1.5:
+                width_score = 0.0
+            elif width_val < 2:
+                width_score = 0.2
+            elif width_val < 2.5:
+                width_score = 0.4
+            elif width_val < 3.0:
+                width_score = 0.6
+            elif width_val < 4.0:
+                width_score = 0.8
             else:
-                width_val = float(sidewalk_width) if sidewalk_width else 0.0
-        except (TypeError, ValueError):
-            width_val = 0.0
-            
-        if width_val == 0.0:
-            width_score = 0.5
-        elif width_val < 1.5:
-            width_score = 0.0
-        elif width_val < 2:
-            width_score = 0.2
-        elif width_val < 2.5:
-            width_score = 0.4
-        elif width_val < 3.0:
-            width_score = 0.6
-        elif width_val < 4.0:
-            width_score = 0.8
+                width_score = 1.0
         else:
-            width_score = 1.0
+            sidewalk_score = None
+            width_score = None
 
         # Lower maxspeed is better for pleasantness.
         try:
@@ -268,8 +288,10 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         if green_visible > 0:
             visible_positive["green"] += 1
 
-        G.edges[u, v, k]["sidewalk_score"] = sidewalk_score
-        G.edges[u, v, k]["width_score"] = width_score
+        if sidewalk_score is not None:
+            G.edges[u, v, k]["sidewalk_score"] = sidewalk_score
+        if width_score is not None:
+            G.edges[u, v, k]["width_score"] = width_score
         G.edges[u, v, k]["maxspeed_score"] = maxspeed_score
         G.edges[u, v, k]["pedestrian_score"] = pedestrian_score
         G.edges[u, v, k]["low_traffic_score"] = low_traffic_score
