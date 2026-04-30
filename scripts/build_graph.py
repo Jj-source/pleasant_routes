@@ -44,18 +44,15 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
     pois = ox.features_from_place(
         place,
         tags={
-            "amenity": ["cafe", "bar", "pub", "restaurant"],
+            "amenity": ["cafe", "bar", "pub", "restaurant",
+                "bakery"],
             "shop": [
-                "bakery",
                 "convenience",
-                "supermarket",
-                "mall",
                 "department_store",
                 "clothes",
                 "fashion",
                 "shoes",
-            ],
-            "leisure": ["fitness_centre"],
+            ]
         },
     )
     attractiveness_pois = ox.features_from_place(

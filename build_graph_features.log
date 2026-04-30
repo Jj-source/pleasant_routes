@@ -1,0 +1,4 @@
+13:36:37 INFO build_graph.features Fetched features: crossings=13138 pois=3440 attractiveness=673 trees=121735 green=4183 buildings=41980
+13:36:45 WARNING build_graph.features Missing sidewalk tags; disabling sidewalk_score and width_score
+13:36:45 INFO build_graph.features Edge tag coverage out of 99700: {'highway': 99700, 'sidewalk': 17056, 'sidewalk:width': 0, 'maxspeed': 16833, 'width': 2672}
+13:36:45 INFO build_graph.features Raw buffer counts (edges with >=1): crossings=99700 pois=99700 attractiveness=99700 trees=99700 green=99700
