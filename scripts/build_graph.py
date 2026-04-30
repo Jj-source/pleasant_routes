@@ -117,6 +117,7 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         "sidewalk": edges_gdf["sidewalk"].notna().sum(),
         "sidewalk:width": edges_gdf["sidewalk:width"].notna().sum(),
         "maxspeed": edges_gdf["maxspeed"].notna().sum(),
+        "width": edges_gdf.get("width", gpd.Series([], dtype=object)).notna().sum(),
         "surface": edges_gdf.get("surface", gpd.Series([], dtype=object)).notna().sum(),
         "smoothness": edges_gdf.get("smoothness", gpd.Series([], dtype=object)).notna().sum(),
     }
@@ -149,15 +150,31 @@ def attach_osm_indicators(G, place: str, use_visibility: bool = True) -> None:
         highway = row.get("highway")
         sidewalk = row.get("sidewalk")
         sidewalk_width = row.get("sidewalk:width")
+        width = row.get("width")
         maxspeed = row.get("maxspeed")
 
         # Basic heuristic scores in raw units before normalization.
         sidewalk_score = 1.0 if sidewalk in {"both", "yes", "left", "right"} else 0.0
         try:
-            width_val = float(sidewalk_width) if sidewalk_width else 0.0
+            if str(highway) in {"pedestrian", "footway", "living_street"}:
+                width_val = float(width) if width else 0.0
+                sidewalk_score = 1.0
+            else:
+                width_val = float(sidewalk_width) if sidewalk_width else 0.0
         except (TypeError, ValueError):
             width_val = 0.0
-        width_score = min(width_val / 2.5, 1.0)
+        if width_val < 1.5:
+            width_score = 0.0
+        elif width_val < 2:
+            width_score = 0.2
+        elif width_val < 2.5:
+            width_score = 0.4
+        elif width_val < 3.0:
+            width_score = 0.6
+        elif width_val < 4.0:
+            width_score = 0.8
+        else:
+            width_score = 1.0
 
         # Lower maxspeed is better for pleasantness.
         try:
@@ -275,16 +292,19 @@ def attach_thermal_comfort(G) -> None:
     POSTPONED FOR NOW
     """
 
-def normalize_indicators(G) -> None:
+def normalize_indicators(G, skip_keys: Iterable[str] | None = None) -> None:
     """
     Apply percentile-based min-max normalization to all indicator attributes.
     Scales each to [-1, 1] with median = 0. Modifies G in place.
     """
+    skip = set(skip_keys or [])
     indicator_keys = set()
     for _, _, _, data in G.edges(keys=True, data=True):
         for key in data.keys():
             if key.endswith("_score"):
                 indicator_keys.add(key)
+
+    indicator_keys -= skip
 
     for key in indicator_keys:
         values = []
@@ -358,7 +378,15 @@ if __name__ == "__main__":
     #attach_thermal_comfort(G)
     
     logger.info("Step 3/4: normalize indicators")
-    normalize_indicators(G)
+    skip_normalization = {
+        "sidewalk_score",
+        "width_score",
+        "maxspeed_score",
+        "highway_score",
+        "pedestrian_score",
+        "low_traffic_score",
+    }
+    normalize_indicators(G, skip_keys=skip_normalization)
     
     logger.info("Step 4/4: save graph")
     output_path = Path("backend/city_graph.graphml")

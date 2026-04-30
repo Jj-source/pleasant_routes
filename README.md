@@ -99,6 +99,7 @@ TODO: refine the profile data to be the 20% that describes 80% of the person
 - maybe better: let's just ask the user at the beginning if they also want to contribute to the bike annotations and let them have a step more every time?
 - make annotating faster: street segments are too small, find easy way to rate longer segments
 - make annotating faster: reduce necessary clicks
+- presets of weights for the option based on walk or bike route: details on the sidewalk score will be weighted by 0 if i am routing for a bike
 
 ## Routing
 
@@ -157,6 +158,22 @@ Iterative search for routes ~5-10%, 10-25%, 25-50% longer than shortest. Show 2-
 | Attractiveness       | POI density (cafes, shops, art) | 50m buffer count         |
 
 All normalized to [-1, 1], percentile-based scaling, median = 0.
+
+### Current indicator logic (build_graph.py)
+
+- Sidewalk: `sidewalk` tag in {both, yes, left, right} -> 1.0, else 0.0
+- Path width: `sidewalk:width` numeric meters, scaled.
+- Maxspeed: lower is better: $1 - \frac{speed}{80}$, floored at 0
+- Highway class: mapping (footway/cycleway/pedestrian positive; trunk/primary negative)
+- Pedestrian zones: `highway=pedestrian` -> 1.0 else 0.0
+- Low traffic: heuristic by `highway` class + maxspeed adjustment
+- Crossings: count of `highway=crossing` features within 50m buffer
+- POIs: count of amenities/shops/tourism features within 50m buffer
+- Attractiveness: count of tourism/historic/arts/leisure POIs within 50m buffer
+- Trees: count of `natural=tree` nodes within 50m buffer
+- Green areas: count of park/garden/grass/forest/meadow polygons within 50m buffer
+
+Visibility option: for POIs, attractiveness, trees, and green areas, the script can use a visibility filter (line-of-sight to feature centroid that does not intersect a building polygon). Raw buffer counts are also stored with the `_score_raw` suffix.
 
 BONUS:
 
