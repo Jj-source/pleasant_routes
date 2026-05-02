@@ -101,6 +101,8 @@ TODO: refine the profile data to be the 20% that describes 80% of the person
 - make annotating faster: reduce necessary clicks
 - presets of weights for the option based on walk or bike route: details on the sidewalk score will be weighted by 0 if i am routing for a bike
 - do PCA to check redundancy of indicators
+- clean the maps: currently too many segments. crossings could have a score equal to the average between the segments they connect. segments smaller than a threshold could be excluded. segments corresponding to parkings could be removed maybe.
+- two maps: one for walking one for cycling?
 
 ---
 
