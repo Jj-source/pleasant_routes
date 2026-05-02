@@ -97,10 +97,12 @@ TODO: refine the profile data to be the 20% that describes 80% of the person
 - let user have sliders for each indicator
 - let user easily switch from bike mode to walking mode
 - maybe better: let's just ask the user at the beginning if they also want to contribute to the bike annotations and let them have a step more every time?
-- make annotating faster: street segments are too small, find easy way to rate longer segments
+- make annotating faster: street segments are too small, find easy way to rate longer segments (hold and drag over the streets you want to annotate to annotate them together?)
 - make annotating faster: reduce necessary clicks
 - presets of weights for the option based on walk or bike route: details on the sidewalk score will be weighted by 0 if i am routing for a bike
 - do PCA to check redundancy of indicators
+
+---
 
 ## Routing
 
@@ -247,6 +249,12 @@ BONUS:
 ## Build order (MVP)
 
 1. `build_graph.py` — download OSM Turin, attach all indicators, save graphml
+  1. look for distribution of lenght of segments, right now indicators are relative to the middle of the segment
+  BUT if needed we could split in parts the segments and then give the average over multiple points. to save
+  time/space we could do middle + nodes , which are share between segments
+  2. download raw indicators
+  3. eventually run the visibility script to get refined indicators
+  4. eventually add the leftover indicators
 2. `db.py` + schema
 3. `app.py` — `/edge` + `/rating` + `/ratings`
 4. Leaflet map + click→snap + highlight
